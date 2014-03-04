@@ -46,8 +46,7 @@ let test_cursor db =
   let _ = Bdb.next db cur in
   let _ = eq_string "key3" "key3" (Bdb.key db cur) in
   let _ = eq_string "value3" "value3" (Bdb.value db cur) in
-  let _ = try Bdb.next db cur; assert_failure "expecting failure" with _ -> ()
-  in
+  let _ = if not (Bdb.next db cur) then assert_failure "expecting failure" in
   let _ = Bdb._cur_delete cur in
   ()
 
@@ -61,71 +60,10 @@ let test_range db =
     "kez3","value4";
   ]
   in
-  let a = Bdb.range db (Some "key") true (Some "kez") false (-1) in
+  let a = Bdb.range db "key" true (Some "kez") false (-1) in
   let () = eq_int "num==2" 2 (Array.length a) in
   let () = eq_string "key2" "key2" a.(0) in
   let () = eq_string "key3" "key3" a.(1) in
-  ()
-
-
-
-let test_range_entries db =
-  let () = load db
-    [ "@kex1", "value1";
-      "@key2", "value2";
-      "@key3", "value3";
-      "@kez3", "value4"]
-  in
-  let a = Bdb.range_entries "@" db (Some "key") true (Some "kez") false (-1)
-  in
-  let () = eq_int "num==2" 2( Array.length a) in
-  let key i = fst (a.(i)) in
-  let () = eq_string "key2" "key2" (key 0) in
-  let () = eq_string "key3" "key3" (key 1) in
-  ()
-
-let test_range_entries2 db =
- let () = load db
-    [ "@kex1", "value1";
-      "@key2", "value2";
-      "@key3", "value3";
-      "@kez3", "value4"]
-  in
-  let a = Bdb.range_entries "@" db (Some "key") true (Some "key3") false (-1)
-  in
-  let () = eq_int "num==1" 1 ( Array.length a) in
-  let key i = fst (a.(i)) in
-  let () = eq_string "key2" "key2" (key 0) in
-  (* None at end *)
-  let b = Bdb.range_entries "@" db (Some "key") true None false (-1) in
-  let () = OUnit.assert_equal ~printer:string_of_int 3 (Array.length b) in
-  let c = Bdb.range_entries "@" db None true None false (-1) in
-  let () = OUnit.assert_equal ~printer:string_of_int 4 (Array.length c) in
-  let d = Bdb.range_entries "@" db (Some "p") true None false (-1) in
-  let () = OUnit.assert_equal ~printer:string_of_int 0 (Array.length d) in
-  let e = Bdb.range_entries "f" db None false None false (-1) in
-  let () = OUnit.assert_equal ~printer:string_of_int 0 (Array.length e) in
-  ()
-
-let test_range_entries3 db =
-  let p = "O\001\000\000\000\000\000@\000\128\000\000\000\000\000\000\000" in
-  let () =
-    load db
-         [ ("@" ^ p ^ "hi3.txt", "hi3");
-           ("@" ^ p ^ "sub1/hi.txt", "sub1/hi.txt");
-           ("@" ^ p ^ "sub1/hi2.txt","sub1/hi2.txt");
-           ("@" ^ p ^ "sub2/hi2.txt","sub2/hi2.txt");
-]
-  in
-  let k = "O\001\000\000\000\000\000@\000\128\000\000\000\000\000\000\000sub2/" in
-  let a = Bdb.range_entries
-    "@" db
-    (Some k) true
-    (Some "O\002") false (-1)
-  in
-  (*Array.iter (fun (k,v) -> Printf.printf "(%S,%S)\n" k v) a; *)
-  OUnit.assert_equal 1 (Array.length a);
-  OUnit.assert_equal (p ^ "sub2/hi2.txt", "sub2/hi2.txt") a.(0);
   ()
 
 
@@ -166,13 +104,12 @@ let test_flags db =
     | _ -> assert_failure "Unexpected flags set"
 
 let _test_copy_from_cursor db1 db2 max expected =
-  Bdb.with_cursor db1 (fun sdb cur ->
-    try
-      Bdb.first sdb cur;
-    with Not_found -> (* Empty DB *)
-      ();
-    let cnt = Bdb.copy_from_cursor sdb cur db2 max in
-    OUnit.assert_equal ~printer:string_of_int expected cnt)
+  Bdb.with_cursor
+    db1
+    (fun sdb cur ->
+     ignore (Bdb.first sdb cur);
+     let cnt = Bdb.copy_from_cursor sdb cur db2 max in
+     OUnit.assert_equal ~printer:string_of_int expected cnt)
 
 let test_copy_from_cursor_0 db1 db2 =
   _test_copy_from_cursor db1 db2 None 0
@@ -213,7 +150,7 @@ let test_copy_from_cursor_5 db1 db2 =
     loop 0 0
   in
   Bdb.with_cursor db1 (fun sdb cur ->
-    Bdb.first sdb cur;
+    ignore (Bdb.first sdb cur);
     let (iters, cnt) = test sdb cur db2 (Some 11) in
     OUnit.assert_equal ~printer:string_of_int 10 iters;
     OUnit.assert_equal ~printer:string_of_int 100 cnt)
@@ -222,12 +159,11 @@ let test_copy_from_cursor_6 db1 db2 =
   _fill db1 100;
 
   let cnt = Bdb.with_cursor db1 (fun sdb cur ->
-    Bdb.first sdb cur;
+    ignore (Bdb.first sdb cur);
     Bdb.copy_from_cursor sdb cur db2 None) in
   OUnit.assert_equal ~printer:string_of_int 100 cnt;
-
-  let r1 = Bdb.range_entries "k" db1 None true None true (-1) in
-  let r2 = Bdb.range_entries "k" db2 None true None true (-1) in
+  let r1 = Bdb.range db1 "k" true (next_prefix "k") true (-1) in
+  let r2 = Bdb.range db2 "k" true (next_prefix "k") true (-1) in
   OUnit.assert_equal ~printer:string_of_int 100 (Array.length r1);
   OUnit.assert_equal r1 r2
 
@@ -258,9 +194,6 @@ let suite =
       "prefix_keys" >:: wrap test_prefix_keys;
       "null" >:: wrap test_null;
       "flags" >:: wrap test_flags;
-      "range_entries" >:: wrap test_range_entries;
-      "range_entries2" >:: wrap test_range_entries2;
-      "range_entries3" >:: wrap test_range_entries3;
       "copy_from_cursor" >::: [
         "0" >:: wrap2 test_copy_from_cursor_0;
         "1" >:: wrap2 test_copy_from_cursor_1;

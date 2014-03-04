@@ -6,7 +6,6 @@ module Hotc : sig
   val filename : t -> string
   val transaction :  t -> (bdb -> 'd Lwt.t) -> 'd Lwt.t
   val with_cursor :  bdb -> (bdb -> Otc.Bdb.bdbcur -> 'e Lwt.t) -> 'e Lwt.t
-  val batch : t -> int -> string -> string option -> (string * string) list Lwt.t
   val get_bdb : t -> bdb
   val read : t -> (bdb -> 'b Lwt.t) -> 'b Lwt.t
   val create: ?mode:int -> ?lcnum:int -> ?ncnum:int ->

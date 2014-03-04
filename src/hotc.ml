@@ -117,64 +117,6 @@ module Hotc = struct
       (fun () -> let () = Bdb._cur_delete cursor in Lwt.return ())
 
 
-
-
-  let batch bdb (batch_size:int) (prefix:string) (start:string option) =
-    transaction bdb
-      (fun db2 ->
-	with_cursor db2
-	  (fun db3 cur ->
-	    let res = match start with
-	      | None ->
-		begin
-		  try
-		    let () = Bdb.jump db3 cur prefix in
-		    None
-		  with
-		    | Not_found -> Some []
-		end
-	      | Some start2 ->
-		let key = prefix ^ start2 in
-		try
-		  let () = Bdb.jump db3 cur key in
-		  let key2 = Bdb.key db3 cur in
-		  if key = key2 then
-		    let () = Bdb.next db3 cur in
-		    None
-		  else None
-		with
-		  | Not_found -> Some []
-	    in
-	    match res with
-              | Some empty -> Lwt.return empty
-              | None ->
-		let rec one build = function
-		  | 0 -> Lwt.return (List.rev build)
-		  | count ->
-		    Lwt.catch (fun () ->
-		      let key = Bdb.key db3 cur in
-		      let prefix_len = String.length prefix in
-		      let prefix2 = String.sub key 0 prefix_len in
-		      let () = if prefix2 <> prefix then raise Not_found in
-		      let value = Bdb.value db3 cur in
-		      (* chop of prefix *)
-		      let skey = String.sub key prefix_len ((String.length key) - prefix_len) in
-		      (* let () = log "ZZZ k:'%s' v:'%s'" skey value in *)
-		      Lwt.return (Some (skey,value))
-		    ) (function | Not_found -> Lwt.return None | exn -> Lwt.fail exn) >>= function
-		      | None -> Lwt.return (List.rev build)
-		      | Some s ->
-			Lwt.catch
-			  (fun () ->
-			    let () = Bdb.next db3 cur in
-			    one (s::build) (count-1)
-			  )
-			  (function | Not_found -> Lwt.return (List.rev (s::build)) | exn -> Lwt.fail exn)
-		in
-		one [] batch_size
-	  )
-      )
-
   let exists t key =
     Lwt.catch
       ( fun () ->

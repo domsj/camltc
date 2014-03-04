@@ -38,21 +38,20 @@ module Bdb = struct
 
   type bdbcur (* type stays abstract *)
 
-  external first: bdb -> bdbcur -> unit = "bdb_first"
-  external next: bdb -> bdbcur -> unit = "bdb_next"
-  external prev: bdb -> bdbcur -> unit = "bdb_prev"
-  external last: bdb -> bdbcur -> unit = "bdb_last"
+  external first: bdb -> bdbcur -> bool = "bdb_first"
+  external next: bdb -> bdbcur -> bool = "bdb_next"
+  external prev: bdb -> bdbcur -> bool = "bdb_prev"
+  external last: bdb -> bdbcur -> bool = "bdb_last"
   external key: bdb -> bdbcur -> string = "bdb_key"
   external value: bdb -> bdbcur -> string = "bdb_value"
   external record: bdb -> bdbcur -> string * string = "bdb_record"
-  external jump: bdb -> bdbcur -> string -> unit = "bdb_jump"
+  external jump: bdb -> bdbcur -> string -> bool = "bdb_jump"
 
   let current = 0
   let before = 1
   let after = 2
 
-  external cur_put: bdb -> bdbcur -> string -> int -> unit = "bdb_cur_put"
-  external cur_out: bdb -> bdbcur -> unit = "bdb_cur_out"
+  external cur_out: bdb -> bdbcur -> bool = "bdb_cur_out"
 
   external out: bdb -> string -> unit = "bdb_out"
   external put: bdb -> string -> string -> unit = "bdb_put"
@@ -79,7 +78,7 @@ module Bdb = struct
   external _trancommit: bdb -> unit = "bdb_trancommit"
   external _tranabort: bdb -> unit = "bdb_tranabort"
 
-  external range: bdb -> string option -> bool -> string option -> bool -> int -> string array
+  external range: bdb -> string -> bool -> string option -> bool -> int -> string array
     = "bdb_range_bytecode" "bdb_range_native"
 
   external prefix_keys: bdb -> string -> int -> string array = "bdb_prefix_keys"
@@ -114,27 +113,30 @@ module Bdb = struct
 
 
   let delete_prefix bdb prefix =
-    let count = ref 0 in
-    with_cursor bdb
+    with_cursor
+      bdb
       (fun bdb cur ->
-        try
-          let () = jump bdb cur prefix in
-          let rec step () =
-            let jumped_key = key bdb cur in
-            if prefix_match prefix jumped_key
-            then
-              let () = cur_out bdb cur in (* and jump to next *)
-              let () = incr count in
-              step ()
-            else
-              ()
-
-          in
-          step ()
-        with
-          | Not_found -> ()
-      );
-    !count
+       if jump bdb cur prefix
+       then
+         begin
+           let rec step n =
+             let jumped_key = key bdb cur in
+             if prefix_match prefix jumped_key
+             then
+               begin
+                 if cur_out bdb cur  (* and jump to next *)
+                 then
+                   step (n + 1)
+                 else
+                   n
+               end
+             else
+               n
+           in
+           step 0
+         end
+       else
+         0)
 
 
   let exists bdb key =
@@ -142,203 +144,6 @@ module Bdb = struct
       let _ = get bdb key in true
     with
       | Not_found -> false
-
-  type direction =
-  | Ascending
-  | Descending
-
-  type include_key = bool
-
-  type start_and_direction =
-  | Key of string * include_key * direction
-  | OmegaDescending
-
-  let range'
-      bdb
-      start_key_and_direction
-      (accumulate : (string * string) -> 'a -> ('a * bool))
-      (initial : 'a) : 'a =
-    let cursor_init, move_next =
-      match start_key_and_direction with
-      | Key (start_key, include_key, dir) ->
-        begin
-          match dir with
-          | Ascending ->
-            let skip_till_start_key bdb cur =
-              try
-                jump bdb cur start_key;
-                if include_key
-                then
-                  ()
-                else
-                  next bdb cur;
-                false
-              with Not_found ->
-                true (* empty *)
-            in
-            skip_till_start_key, next
-          | Descending ->
-            let init_cur bdb cur =
-              try
-                jump bdb cur start_key;
-                if include_key && key bdb cur = start_key
-                then
-                  ()
-                else
-                  prev bdb cur;
-                false
-              with Not_found ->
-                last bdb cur;
-                false
-            in
-            init_cur, prev
-        end
-      | OmegaDescending ->
-        (fun bdb cur -> last bdb cur; false), prev
-    in
-    with_cursor bdb
-      (fun bdb cur ->
-        let isempty = cursor_init bdb cur in
-        let rec loop (acc, continue) =
-          if not continue
-          then
-            acc
-          else
-            begin
-              let record_ = record bdb cur in
-              let (acc', _) as res = accumulate record_ acc in
-              try
-                let () = move_next bdb cur in
-                loop res
-              with Not_found ->
-                acc'
-            end in
-        if isempty
-        then
-          initial
-        else
-          loop (initial, true))
-
-  type upper_border =
-  | BKey of string * include_key
-  | BOmega
-
-  let range_ascending
-      bdb (first : string) finc (last_ : upper_border)
-      accumulate initial =
-    let comp key =
-      match last_ with
-      | BOmega ->
-        true
-      | BKey (last_, linc) ->
-        begin
-          match String.compare key last_ with
-          | 0 -> linc
-          | 1 -> false
-          | -1 -> true
-          | _ -> failwith "impossible compare result"
-        end
-    in
-    range'
-      bdb
-      (Key (first, finc, Ascending))
-      (fun ((key, value) as kv) acc ->
-        if comp key
-        then
-          accumulate kv acc
-        else
-          (acc, false))
-      initial
-
-  let range_descending
-      bdb (first : upper_border) (last_ : string) linc
-      accumulate initial =
-    let comp key =
-      match String.compare key last_ with
-      | 0 -> linc
-      | 1 -> true
-      | -1 -> false
-      | _ -> failwith "impossible compare result"
-    in
-    range'
-      bdb
-      (match first with
-      | BOmega ->
-        OmegaDescending
-      | BKey (k, inc) ->
-        Key (k, inc, Descending))
-      (fun ((key, value) as kv) acc ->
-        if comp key
-        then
-          accumulate kv acc
-        else
-          (acc, false))
-      initial
-
-  let range_entries prefix bdb first finc last_ linc max =
-    let first  = match first with
-      | Some x -> prefix ^ x
-      | None   -> prefix in
-    let last_ = match last_ with
-      | None ->
-        begin
-          match next_prefix prefix with
-          | None ->
-            BOmega
-          | Some nprefix ->
-            BKey (nprefix, false)
-        end
-      | Some x ->
-        BKey ((prefix ^ x), linc) in
-    let pl = String.length prefix in
-    let _, result =
-      range_ascending
-        bdb
-        first
-        finc
-        last_
-        (fun (key, value) (count, result) ->
-          if count = max
-          then
-            ((count, result), false)
-          else
-            let l = String.length key in
-            let key2 = String.sub key pl (l - pl) in
-            (count + 1, (key2, value) :: result), true)
-        (0, []) in
-    Array.of_list (List.rev result)
-
-
-  let rev_range_entries prefix bdb first finc last_ linc max =
-    let pl = String.length prefix in
-    let _, result =
-      range_descending
-        bdb
-        (match first with
-        | None ->
-          begin
-            match next_prefix prefix with
-            | None ->
-              BOmega
-            | Some x ->
-              BKey (x, false)
-          end
-        | Some x ->
-          BKey (prefix ^ x, finc))
-        (match last_ with
-        | None -> prefix
-        | Some x -> prefix ^ x)
-        linc
-        (fun (key, value) (count, result) ->
-          if count = max
-          then
-            ((count, result), false)
-          else
-            let l = String.length key in
-            let key2 = String.sub key pl (l - pl) in
-            (count + 1, (key2, value) :: result), true)
-        (0, []) in
-    result
 
   external _flags : bdb -> int = "bdb_flags"
 

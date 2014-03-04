@@ -18,7 +18,7 @@ module Bdb : sig
   val get_nolock : bdb -> string -> string
   val out: bdb -> string -> unit
   val range: bdb ->
-    string option -> bool ->
+    string -> bool ->
     string option -> bool -> int ->
     string array
 
@@ -27,35 +27,12 @@ module Bdb : sig
   val delete_prefix : bdb -> string -> int
   val prefix_keys : bdb -> string -> int -> string array
 
-  type include_key = bool
-  type upper_border =
-  | BKey of string * include_key
-  | BOmega
-
-  val range_ascending : bdb -> string -> bool -> upper_border ->
-    ((string * string) -> 'a -> ('a * bool)) -> 'a -> 'a
-  val range_descending : bdb -> upper_border -> string -> bool ->
-    ((string * string) -> 'a -> ('a * bool)) -> 'a -> 'a
-
-  val range_entries : string ->
-    bdb ->
-    string option -> bool ->
-    string option -> bool -> int ->
-    (string * string) array
-
-  val rev_range_entries:
-    string ->
-    bdb ->
-    string option ->
-    bool -> string option -> bool -> int -> (string * string) list
-  val get_key_count : bdb -> int64
-
-  val first: bdb -> bdbcur -> unit
-  val jump : bdb -> bdbcur -> string -> unit
-  val next : bdb -> bdbcur -> unit
-  val prev : bdb -> bdbcur -> unit
-  val last : bdb -> bdbcur -> unit
-  val cur_out  : bdb -> bdbcur -> unit
+  val first: bdb -> bdbcur -> bool
+  val jump : bdb -> bdbcur -> string -> bool
+  val next : bdb -> bdbcur -> bool
+  val prev : bdb -> bdbcur -> bool
+  val last : bdb -> bdbcur -> bool
+  val cur_out  : bdb -> bdbcur -> bool
   (** [cur_out b c] deletes the current key value pair and jumps to next *)
 
   val key: bdb -> bdbcur -> string

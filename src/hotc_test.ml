@@ -21,13 +21,13 @@ let test_overal db =
 let test_with_cursor db =
   Hotc.transaction db
     (fun db' ->
-      let () = Bdb.put db' "hello" "world" in
-      Hotc.with_cursor db'
-	(fun _ cursor ->
-	  let () = Bdb.first db' cursor in
-	  let x = Bdb.value db' cursor in
-	  Lwt.return x
-	)
+     let () = Bdb.put db' "hello" "world" in
+     Hotc.with_cursor db'
+                      (fun _ cursor ->
+                       let _ = Bdb.first db' cursor in
+                       let x = Bdb.value db' cursor in
+                       Lwt.return x
+                      )
     ) >>= fun res ->
   let () = eq_string "world" res in
   Lwt.return ()
@@ -90,37 +90,6 @@ Lwt.catch
 
 
 
-
-let test_batch db =
-  Hotc.transaction db
-    (fun db' ->
-       Prefix_otc.put db' "VOL" "ha" "lo" >>= fun () ->
-       Prefix_otc.put db' "VOL" "he" "pluto" >>= fun () ->
-       Prefix_otc.put db' "VOL" "hello" "world" >>= fun () ->
-       Prefix_otc.put db' "VOL" "hi" "mars"
-    ) >>= fun () ->
-  Hotc.batch db 2 "VOL" None >>= fun batch ->
-  match batch with
-    | [(k1,s1);(k2,s2)] ->
-      begin
-      Hotc.batch db 2 "VOL" (Some k2) >>= fun batch2 ->
-      match batch2 with
-	| [(k3,s3);(k4,s4)] ->
-	  eq_string "ha" k1;
-	  eq_string "lo" s1;
-	  eq_string "he" k2;
-	  eq_string "pluto" s2;
-	  eq_string "hello" k3;
-	  eq_string "world" s3;
-	  eq_string "hi" k4;
-	  eq_string "mars" s4;
-	  Hotc.batch db 2 "VOL" (Some k4) >>= fun batch3 ->
-	  assert_equal batch3 [];
-	  Lwt.return ()
-	| _ -> Lwt.fail (Failure "2:got something else")
-      end
-    | _ -> Lwt.fail (Failure "1:got something else")
-
 let eq_string str i1 i2 =
   let msg = Printf.sprintf "%s expected:\"%s\" actual:\"%s\"" str (String.escaped i1) (String.escaped i2) in
   OUnit.assert_equal ~msg i1 i2
@@ -158,132 +127,20 @@ let test_next_prefix =
   let next = next_prefix "\255\255" in
   if (next <> None) then failwith "next prefix not correct"
 
-let test_rev_range_entries db =
-  let eq = eq_list (eq_tuple eq_string eq_string) in
-  Hotc.transaction db
-    (fun db ->
-      Prefix_otc.put db "VAN" "il" "le" >>= fun () ->
-      Prefix_otc.put db "VOL" "ha" "lo" >>= fun () ->
-      Prefix_otc.put db "VOL" "he" "pluto" >>= fun () ->
-      Prefix_otc.put db "VOL" "hello" "world" >>= fun () ->
-      Prefix_otc.put db "VOL" "hi" "mars" >>= fun () ->
-      Prefix_otc.put db "Z"   "h" "f"
-    ) >>= fun () ->
-  let bdb = Hotc.get_bdb db in
-  (* as we give NO start entry this will start at the LAST entry in the prefix... *)
-  let l1 = Bdb.rev_range_entries "VOL" bdb None true None true 3 in
-  let () = Printf.printf "l1: %s\n" (show_l l1) in
-  let () = eq "l1" [("he","pluto");("hello","world");("hi","mars")] l1 in
-  let l2 = Bdb.rev_range_entries "VOL" bdb (Some "hi") true None true 3 in
-  let () = Printf.printf "l2: %s\n" (show_l l2) in
-  (* note that they are returned IN order *)
-  let () = eq "l2" [("he","pluto");("hello","world");("hi", "mars")] l2 in
-  (* don't include first *)
-  let l3 = Bdb.rev_range_entries "VOL" bdb (Some "hi") false None true 3 in
-  let () = Printf.printf "l3: %s\n" (show_l l3) in
-  let () = eq "l3" [("ha","lo");("he","pluto");("hello","world")] l3 in
-  let l4 = Bdb.rev_range_entries "VOL" bdb (Some "hi") false (Some "he") true 3 in
-  let () = Printf.printf "l4: %s\n" (show_l l4) in
-  let () = eq "l4" [("he","pluto");("hello","world")] l4 in
-  let l5 = Bdb.rev_range_entries "VOL" bdb (Some "hi") false (Some "he") false 3 in
-  let () = Printf.printf "l5: %s\n" (show_l l5) in
-  let () = eq "l5" [("hello","world")] l5 in
-  let l6 = Bdb.rev_range_entries "VOL" bdb (Some "he") false None false 4 in
-  let () = Printf.printf "l6: %s\n" (show_l l6) in
-  let () = eq "l6" [("ha","lo")] l6 in
-  let l7 = Bdb.rev_range_entries "VOL" bdb (Some "ha") false None false 4 in
-  let () = Printf.printf "l7: %s\n" (show_l l7) in
-  let () = eq "l7" [] l7 in
-  let l8 = Bdb.rev_range_entries "VOL" bdb (Some "he") true (Some "h") false 4 in
-  let () = Printf.printf "l8: %s\n" (show_l l8) in
-  let () = eq "l8" [("ha","lo");("he","pluto")] l8 in
-  let l9 = Bdb.rev_range_entries "VOL" bdb (Some "hd") false None true 3 in
-  let () = Printf.printf "l9: %s\n" (show_l l9) in
-  let () = eq "l9" [("ha","lo")] l9 in
-  let l10 = Bdb.rev_range_entries "VOL" bdb (Some "hu") false None true 3 in
-  let () = Printf.printf "l10: %s\n" (show_l l10) in
-  let () = eq "l10" [("he","pluto");("hello","world");("hi","mars")] l10 in
-  Lwt.return ()
-
-let test_rev_range_entries2 db =
-  let eq = eq_list (eq_tuple eq_string eq_string) in
-  Hotc.transaction db
-    (fun db ->
-      Prefix_otc.put db "@" "nsA_foo" "foox" >>= fun () ->
-      Prefix_otc.put db "@" "nsI_foo" "foo0" >>= fun () ->
-      Prefix_otc.put db "@" "nsN_VOL" "foo1" >>= fun () ->
-      Prefix_otc.put db "@" "nsN_VOL2" "foo2"
-    ) >>= fun () ->
-  let bdb = Hotc.get_bdb db in
-  (* rev_range_entries @ @nsN_VOL2 true @nsN_ false *)
-  let l1 = Bdb.rev_range_entries "@" bdb (Some "nsN_VOL2") true (Some "nsN_") false 3 in
-  let () = Printf.printf "l1: %s\n" (show_l l1) in
-  let () = eq "l1" [("nsN_VOL","foo1");("nsN_VOL2", "foo2")] l1 in
-  Lwt.return ()
-
-let test_rev_range_entries3 db =
-  let eq = eq_list (eq_tuple eq_string eq_string) in
-  let _pf = "@" in
-  Hotc.transaction db
-    (fun bdb ->
-      let put k v = Bdb.put bdb (_pf ^ k) v in
-      put "faa" "boo";
-      put "foo" "bar";
-      Lwt.return ()
-    ) >>= fun () ->
-
-  let first = Some "z"
-  and finc = false
-  and last = None
-  and linc = false
-  and max = -1 in
-  let bdb = Hotc.get_bdb db in
-  let l1 = Bdb.rev_range_entries _pf bdb first finc last linc max in
-  let () = Printf.printf "hi l1: %s\n" (show_l l1) in
-  let () = eq "l1" [("faa", "boo");("foo","bar")] l1 in
-  Lwt.return ()
-
-let test_rev_range_entries4 db =
-  Hotc.transaction db
-    (fun bdb ->
-      Bdb.put bdb "key0" "value0";
-      Bdb.put bdb "key1" "value1";
-      Bdb.put bdb "key2" "value2";
-      Lwt.return ()
-    ) >>= fun () ->
-  let bdb = Hotc.get_bdb db in
-  let l1 = Bdb.rev_range_entries "" bdb (Some "kez") false (Some "a") true 10 in
-  let () = Printf.printf "l1:%s\n" (show_l l1) in
-  let eq = eq_list (eq_tuple eq_string eq_string) in
-  let () = eq  "l1" [("key0","value0");("key1","value1");("key2","value2")] l1
-  in
-  Lwt.return ()
 
 let load db kvs = List.iter (fun (k,v) -> Bdb.put db k v) kvs
 
-let test_rev_range_entries5 db =
-  let bdb = Hotc.get_bdb db in
-  let () = load bdb
-    [ "@kex1", "value1";
-      "@key2", "value2";
-      "@key3", "value3";
-      "@kez3", "value4"] in
-  let a = Bdb.rev_range_entries "@" bdb None false (Some "p") true (-1) in
-  let () = OUnit.assert_equal ~printer:string_of_int 0 (List.length a) in
-  let b = Bdb.rev_range_entries "f" bdb None false None false (-1) in
-  let () = OUnit.assert_equal ~printer:string_of_int 0 (List.length b) in
-  Lwt.return ()
 
-let test_delete_prefix db = 
+let test_delete_prefix db =
   let bdb = Hotc.get_bdb db in
-  let rec fill i = 
-    if i = 100 
+  let rec fill i =
+    if i = 0
     then ()
     else
       let () = Bdb.put bdb (Printf.sprintf "my_prefix_%i"  i) "value does not matter" in
-      fill (i+1)
+      fill (i-1)
   in
-  let () = fill 0 in
+  let () = fill 100 in
   let g0 = Bdb.delete_prefix bdb "x" in
   let my_test a b = OUnit.assert_equal ~printer:string_of_int a b in
   my_test 0 g0;
@@ -297,7 +154,7 @@ let setup () = Hotc.create "/tmp/foo.tc" []
 
 let teardown db =
   Hotc.delete db >>= fun () ->
-  let () = Unix.unlink "/tmp/foo.tc" in 
+  let () = Unix.unlink "/tmp/foo.tc" in
   Lwt.return ()
 
 let suite =
@@ -308,12 +165,6 @@ let suite =
       "with_cursor" >:: wrap test_with_cursor;
       "prefix" >:: wrap test_prefix;
       "prefix_fold" >:: wrap test_prefix_fold;
-      "batch" >:: wrap test_batch;
       "transaction" >:: wrap test_transaction;
-      "rev_range_entries" >:: wrap test_rev_range_entries;
-      "rev_range_entries2" >:: wrap test_rev_range_entries2;
-      "rev_range_entries3" >:: wrap test_rev_range_entries3;
-      "rev_range_entries4" >:: wrap test_rev_range_entries4;
-      "test_rev_range_entries5" >:: wrap test_rev_range_entries5;
       "delete_prefix" >:: wrap test_delete_prefix;
     ]

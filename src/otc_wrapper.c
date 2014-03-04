@@ -176,44 +176,36 @@ void bdb_cur_delete(value bdbcur) {
 
 
 
-void bdb_first(value bdb, value bdbcur)
+value bdb_first(value bdb, value bdbcur)
 {
   CAMLparam2(bdb, bdbcur);
-  if (!tcbdbcurfirst(Bdbcur_val(bdbcur)))
-    {
-      bdb_handle_error(Bdb_val(bdb));
-    }
-  CAMLreturn0;
+  CAMLlocal1(res);
+  res = tcbdbcurfirst(Bdbcur_val(bdbcur));
+  CAMLreturn(res);
 }
 
-void bdb_next(value bdb, value bdbcur)
+value bdb_next(value bdb, value bdbcur)
 {
   CAMLparam2(bdb, bdbcur);
-  if (!tcbdbcurnext(Bdbcur_val(bdbcur)))
-    {
-      bdb_handle_error(Bdb_val(bdb));
-    }
-  CAMLreturn0;
+  CAMLlocal1(res);
+  res = tcbdbcurnext(Bdbcur_val(bdbcur));
+  CAMLreturn(res);
 }
 
-void bdb_prev(value bdb, value bdbcur)
+value bdb_prev(value bdb, value bdbcur)
 {
   CAMLparam2(bdb, bdbcur);
-  if (!tcbdbcurprev(Bdbcur_val(bdbcur)))
-    {
-      bdb_handle_error(Bdb_val(bdb));
-    }
-  CAMLreturn0;
+  CAMLlocal1(res);
+  res = tcbdbcurprev(Bdbcur_val(bdbcur));
+  CAMLreturn(res);
 }
 
-void bdb_last(value bdb, value bdbcur)
+value bdb_last(value bdb, value bdbcur)
 {
   CAMLparam2(bdb, bdbcur);
-  if (!tcbdbcurlast(Bdbcur_val(bdbcur)))
-    {
-      bdb_handle_error(Bdb_val(bdb));
-    }
-  CAMLreturn0;
+  CAMLlocal1(res);
+  res = tcbdbcurlast(Bdbcur_val(bdbcur));
+  CAMLreturn(res);
 }
 
 value bdb_key(value bdb, value bdbcur)
@@ -268,18 +260,16 @@ value bdb_record(value bdb, value bdbcur)
   CAMLreturn(res_tup);
 }
 
-void bdb_jump(value bdb, value bdbcur, value key)
+value bdb_jump(value bdb, value bdbcur, value key)
 {
   CAMLparam3(bdb, bdbcur, key);
+  CAMLlocal1(res);
   const int klen = caml_string_length(key);
-  if (!tcbdbcurjump(Bdbcur_val(bdbcur),
-                    String_val(key),
-                    klen
-                     ))
-    {
-      bdb_handle_error(Bdb_val(bdb));
-    }
-  CAMLreturn0;
+  res = tcbdbcurjump(Bdbcur_val(bdbcur),
+                     String_val(key),
+                     klen
+                     );
+  CAMLreturn(res);
 }
 
 void bdb_cur_put(value bdb, value bdbcur, value val, value option)
@@ -387,14 +377,12 @@ void bdb_out(value bdb, value key)
   CAMLreturn0;
 }
 
-void bdb_cur_out(value bdb, value bdbcur)
+value bdb_cur_out(value bdb, value bdbcur)
 {
   CAMLparam2(bdb, bdbcur);
-  if (!tcbdbcurout(Bdbcur_val(bdbcur)))
-    {
-      bdb_handle_error(Bdb_val(bdb));
-    }
-  CAMLreturn0;
+  CAMLlocal1(res);
+  res = tcbdbcurout(Bdbcur_val(bdbcur));
+  CAMLreturn(res);
 }
 
 void bdb_tranbegin(value bdb)
@@ -440,8 +428,8 @@ value bdb_range_native(
   int elen = 0;
   char * bks = NULL;
   char * eks = NULL;
-  if (bk != Val_none) {
-    value x = Some_val(bk);
+  {
+    value x = String_val(bk);
     bks = String_val(x);
     blen = caml_string_length(x);
   }
