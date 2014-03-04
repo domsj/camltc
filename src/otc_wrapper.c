@@ -60,6 +60,7 @@ static struct custom_operations bdbcur_ops = {
 /* Accessing the TCBDB * part of a Caml custom block */
 #define Bdb_val(v) (*((TCBDB **) Data_custom_val(v)))
 #define Bdbcur_val(v) (*((BDBCUR **) Data_custom_val(v)))
+#define RETURNBOOL(v) {if (v) {CAMLreturn(Val_true);} else {CAMLreturn(Val_false);}}
 
 /* Allocating a Caml custom block to hold the given TCBDB * */
 static value alloc_bdb(TCBDB * db)
@@ -176,36 +177,36 @@ void bdb_cur_delete(value bdbcur) {
 
 
 
-value bdb_first(value bdb, value bdbcur)
+CAMLprim value bdb_first(value bdb, value bdbcur)
 {
   CAMLparam2(bdb, bdbcur);
   CAMLlocal1(res);
   res = tcbdbcurfirst(Bdbcur_val(bdbcur));
-  CAMLreturn(res);
+  RETURNBOOL(res);
 }
 
-value bdb_next(value bdb, value bdbcur)
+CAMLprim value bdb_next(value bdb, value bdbcur)
 {
   CAMLparam2(bdb, bdbcur);
   CAMLlocal1(res);
   res = tcbdbcurnext(Bdbcur_val(bdbcur));
-  CAMLreturn(res);
+  RETURNBOOL(res);
 }
 
-value bdb_prev(value bdb, value bdbcur)
+CAMLprim value bdb_prev(value bdb, value bdbcur)
 {
   CAMLparam2(bdb, bdbcur);
   CAMLlocal1(res);
   res = tcbdbcurprev(Bdbcur_val(bdbcur));
-  CAMLreturn(res);
+  RETURNBOOL(res);
 }
 
-value bdb_last(value bdb, value bdbcur)
+CAMLprim value bdb_last(value bdb, value bdbcur)
 {
   CAMLparam2(bdb, bdbcur);
   CAMLlocal1(res);
   res = tcbdbcurlast(Bdbcur_val(bdbcur));
-  CAMLreturn(res);
+  RETURNBOOL(res);
 }
 
 value bdb_key(value bdb, value bdbcur)
@@ -260,7 +261,7 @@ value bdb_record(value bdb, value bdbcur)
   CAMLreturn(res_tup);
 }
 
-value bdb_jump(value bdb, value bdbcur, value key)
+CAMLprim value bdb_jump(value bdb, value bdbcur, value key)
 {
   CAMLparam3(bdb, bdbcur, key);
   CAMLlocal1(res);
@@ -269,7 +270,7 @@ value bdb_jump(value bdb, value bdbcur, value key)
                      String_val(key),
                      klen
                      );
-  CAMLreturn(res);
+  RETURNBOOL(res);
 }
 
 void bdb_cur_put(value bdb, value bdbcur, value val, value option)
@@ -382,7 +383,7 @@ value bdb_cur_out(value bdb, value bdbcur)
   CAMLparam2(bdb, bdbcur);
   CAMLlocal1(res);
   res = tcbdbcurout(Bdbcur_val(bdbcur));
-  CAMLreturn(res);
+  RETURNBOOL(res);
 }
 
 void bdb_tranbegin(value bdb)
@@ -429,9 +430,8 @@ value bdb_range_native(
   char * bks = NULL;
   char * eks = NULL;
   {
-    value x = String_val(bk);
-    bks = String_val(x);
-    blen = caml_string_length(x);
+    bks = String_val(bk);
+    blen = caml_string_length(bk);
   }
   if (ek != Val_none) {
     value x = Some_val(ek);
