@@ -60,6 +60,7 @@ module Bdb : sig
 
   val key: bdb -> bdbcur -> string
   val value: bdb -> bdbcur -> string
+  val record: bdb -> bdbcur -> string * string
 
   val with_cursor : bdb -> (bdb -> bdbcur -> 'a) -> 'a
 
